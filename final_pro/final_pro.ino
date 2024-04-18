@@ -160,7 +160,7 @@ void loop() {
 
   // ShowSerialData();
 
-  gprsSerial.println("AT+CSTT=\"internet.mtn\"");//setting APN
+  gprsSerial.println("AT+CSTT=\"internet\"");//setting APN
   delay(1000);
 
   // ShowSerialData();
