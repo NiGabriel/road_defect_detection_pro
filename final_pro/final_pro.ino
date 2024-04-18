@@ -4,30 +4,25 @@
 #include <SoftwareSerial.h>
 
 
-SoftwareSerial gprsSerial(7,8);
+SoftwareSerial gprsSerial(7, 8);
+SoftwareSerial gpsSerial(4, 3);
 
-// String gpsData;
-// #include <DHT.h>
 
-// #define DHTPIN A0
+const int MPU_ADDR = 0x68;
+const unsigned long GPS_TIMEOUT = 2000;
 
-// DHT dht(DHTPIN, DHT11);
-
-// static const int RXPin = 3, TXPin = 4;
-
-// TinyGPSPlus gps;
-
-// SoftwareSerial ss(RXPin, TXPin);
-
-const int MPU_ADDR=0x68;
+TinyGPSPlus gps;
 
 int16_t accelerometer_x, accelerometer_y, accelerometer_z;
 int16_t gyro_x, gyro_y, gyro_z;
 int16_t temperature;
+int16_t prev_accelerometer_y = 0;
+bool upward_movement_detected = false;
+bool downward_movement_detected = false;
 
 char tmp_str[7];
 
-char* convert_int16_to_str(int16_t i){
+char* convert_int16_to_str(int16_t i) {
   sprintf(tmp_str, "%6d", i);
   return tmp_str;
 }
@@ -37,100 +32,86 @@ void setup() {
   // put your setup code here, to run once:
   gprsSerial.begin(9600);
   Serial.begin(9600);
-  // ss.begin(9600);
-  // dht.begin();
+  gpsSerial.begin(9600);
   Wire.beginTransmission(MPU_ADDR);
   Wire.write(0x6B);
   Wire.write(0);
   Wire.endTransmission(true);
-
-
-  // gprsSerial.println("AT+SAPBR=3,1,\"Contype\",\"GPRS\"");
-  // delay(500);
-  // gprsSerial.println("AT+SAPBR=3,1,\"APN\",\"your_apn\"");
-  // delay(500);
-  // gprsSerial.println("AT+SAPBR=3,1,\"USER\",\"your_username\"");
-  // delay(500);
-  // gprsSerial.println("AT+SAPBR=3,1,\"PWD\",\"your_password\"");
-  // delay(500);
-
-  // // Activate GPRS connection
-  // gprsSerial.println("AT+SAPBR=1,1");
-  // delay(500);
-
-  // // Query IP address
-  // gprsSerial.println("AT+CIFSR");
-  // delay(500);
 }
-
-// void parseGPSData(String data) {
-//   if (data.startsWith("$GNGGA")) {
-//     // Split data into parts
-//     int commaIndex = data.indexOf(',');
-//     int count = 0;
-//     String parts[15]; // Maximum number of parts in a GNGGA sentence
-//     while (commaIndex >= 0) {
-//       int nextCommaIndex = data.indexOf(',', commaIndex + 1);
-//       if (nextCommaIndex >= 0) {
-//         parts[count] = data.substring(commaIndex + 1, nextCommaIndex);
-//       } else {
-//         parts[count] = data.substring(commaIndex + 1);
-//       }
-//       commaIndex = nextCommaIndex;
-//       count++;
-//     }
-    
-//     // Extract latitude and longitude
-//     String lat = parts[1];
-//     String lon = parts[3];
-    
-//     // Output coordinates
-//     Serial.print("Latitude: ");
-//     Serial.println(lat);
-//     Serial.print("Longitude: ");
-//     Serial.println(lon);
-//   }
-// }
-
 
 void loop() {
 
-  // // Read data from GPS module
-  // while (ss.available()) {
-  //   char c = ss.read();
-  //   gpsData += c;
-  //   if (c == '\n') {
-  //     // NMEA sentence received, process it
-  //     parseGPSData(gpsData);
-  //     gpsData = "";
-  //   }
-  // }
+  // Read GPS data
+  unsigned long start = millis();
+  while (millis() - start < GPS_TIMEOUT) {
+    while (gpsSerial.available()) {
+      if (gps.encode(gpsSerial.read())) {
+        if (gps.location.isValid()) {
+          Serial.print("Latitude: ");
+          Serial.println(gps.location.lat(), 6);
+          Serial.print("Longitude: ");
+          Serial.println(gps.location.lng(), 6);
+        }
+      }
+    }
+  }
 
   // put your main code here, to run repeatedly:
   Wire.beginTransmission(MPU_ADDR);
   Wire.write(0x3B);
   Wire.endTransmission(false);
-  Wire.requestFrom(MPU_ADDR, 7*2, true);
+  Wire.requestFrom(MPU_ADDR, 7 * 2, true);
 
-  accelerometer_x = Wire.read()<<8 | Wire.read();
-  accelerometer_y = Wire.read()<<8 | Wire.read();
-  accelerometer_z = Wire.read()<<8 | Wire.read();
-  temperature = Wire.read()<<8 | Wire.read();
+  accelerometer_x = Wire.read() << 8 | Wire.read();
+  accelerometer_y = Wire.read() << 8 | Wire.read();
+  accelerometer_z = Wire.read() << 8 | Wire.read();
+  temperature = Wire.read() << 8 | Wire.read();
 
-  gyro_x = Wire.read()<<8 | Wire.read();
-  gyro_y = Wire.read()<<8 | Wire.read();
-  gyro_z = Wire.read()<<8 | Wire.read();
+  gyro_x = Wire.read() << 8 | Wire.read();
+  gyro_y = Wire.read() << 8 | Wire.read();
+  gyro_z = Wire.read() << 8 | Wire.read();
 
-  Serial.print("aX = "); Serial.print(convert_int16_to_str(accelerometer_x));
-  Serial.print(" | aY = "); Serial.print(convert_int16_to_str(accelerometer_y));
-  Serial.print(" | aZ = "); Serial.print(convert_int16_to_str(accelerometer_z));
+  Serial.print("aX = ");
+  Serial.print(convert_int16_to_str(accelerometer_x));
+  Serial.print(" | aY = ");
+  Serial.print(convert_int16_to_str(accelerometer_y));
+  Serial.print(" | aZ = ");
+  Serial.print(convert_int16_to_str(accelerometer_z));
 
-  Serial.print(" | tmp = "); Serial.print(temperature/340.00+36.53);
-  Serial.print(" | gX = "); Serial.print(convert_int16_to_str(gyro_x));
-  Serial.print(" | gY = "); Serial.print(convert_int16_to_str(gyro_y));
-  Serial.print(" | gZ = "); Serial.print(convert_int16_to_str(gyro_z));
+  Serial.print(" | tmp = ");
+  Serial.print(temperature / 340.00 + 36.53);
+  Serial.print(" | gX = ");
+  Serial.print(convert_int16_to_str(gyro_x));
+  Serial.print(" | gY = ");
+  Serial.print(convert_int16_to_str(gyro_y));
+  Serial.print(" | gZ = ");
+  Serial.print(convert_int16_to_str(gyro_z));
 
   Serial.println();
+
+  // Check for upward movement
+  if (accelerometer_y > prev_accelerometer_y + 1000) {
+    upward_movement_detected = true;
+    prev_accelerometer_y = accelerometer_y;
+  }
+  // Check for downward movement
+  else if (accelerometer_y < prev_accelerometer_y - 1000) {
+    downward_movement_detected = true;
+    prev_accelerometer_y = accelerometer_y;
+  }
+
+  // If upward or downward movement detected, display GPS data
+  if (upward_movement_detected || downward_movement_detected) {
+    if (gps.location.isValid()) {
+      gpsSerial.print("GPS Latitude: ");
+      gpsSerial.println(gps.location.lat(), 6);
+      gpsSerial.print("GPS Longitude: ");
+      gpsSerial.println(gps.location.lng(), 6);
+    }
+    // Reset movement detection flags
+    upward_movement_detected = false;
+    downward_movement_detected = false;
+  }
 
   delay(1000);
 
@@ -158,48 +139,31 @@ void loop() {
   gprsSerial.println("AT+CIPMUX=0");
   delay(2000);
 
-  // ShowSerialData();
-
-  gprsSerial.println("AT+CSTT=\"internet\"");//setting APN
+  gprsSerial.println("AT+CSTT=\"internet\"");  //setting APN
   delay(1000);
 
-  // ShowSerialData();
-
-  gprsSerial.println("AT+CIICR");//wireless connection
+  gprsSerial.println("AT+CIICR");  //wireless connection
   delay(3000);
 
-  // ShowSerialData();
-
-  gprsSerial.println("AT+CIFSR");//get local IP address
+  gprsSerial.println("AT+CIFSR");  //get local IP address
   delay(2000);
 
-  // ShowSerialData();
-
-  gprsSerial.println("AT+CIPSTART=\"TCP\", \"api.thingspeak.com\",\"80\""); //start the connection
+  gprsSerial.println("AT+CIPSTART=\"TCP\", \"api.thingspeak.com\",\"80\"");  //start the connection
   delay(6000);
 
-  // ShowSerialData();
-
-  gprsSerial.println("AT+CIPSEND");//begin send data to remote server
+  gprsSerial.println("AT+CIPSEND");  //begin send data to remote server
   delay(4000);
 
-  // ShowSerialData();
-
-  String str = "GET https://api.thingspeak.com/update?api_key=P7NV9M1VIM6AW52I&field1="+String(accelerometer_x)+"&field2="+String(accelerometer_y)+"&field3="+String(accelerometer_z);
+  String str = "GET https://api.thingspeak.com/update?api_key=P7NV9M1VIM6AW52I&field1=" + String(accelerometer_x) + "&field2=" + String(accelerometer_y) + "&field3=" + String(accelerometer_z) + "&field4=" + String(gps.location.lng(), 6) + "&field5=" + String(gps.location.lat(), 6);
   Serial.println(str);
   gprsSerial.println(str);
 
   delay(4000);
-  // ShowSerialData();
 
-  gprsSerial.println((char)26);//sending
+  gprsSerial.println((char)26);  //sending
   delay(5000);
   gprsSerial.println();
 
-  // ShowSerialData();
-
-  gprsSerial.println("AT+CIPSHUT");//close the connection
+  gprsSerial.println("AT+CIPSHUT");  //close the connection
   delay(100);
-  // ShowSerialData();
-
 }
