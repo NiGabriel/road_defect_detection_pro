@@ -1,13 +1,12 @@
 #include "Wire.h"
-#include <String.h>
-#include <TinyGPS++.h>
 #include <SoftwareSerial.h>
-
+#include <TinyGPS++.h>
 
 SoftwareSerial gprsSerial(7, 8);
 SoftwareSerial gpsSerial(4, 3);
 
-
+const int trigger_pin = 12; // Ultrasonic sensor trigger pin
+const int echo_pin = 13;    // Ultrasonic sensor echo pin
 const int MPU_ADDR = 0x68;
 const unsigned long GPS_TIMEOUT = 2000;
 
@@ -22,14 +21,14 @@ bool downward_movement_detected = false;
 
 char tmp_str[7];
 
-char* convert_int16_to_str(int16_t i) {
+char *convert_int16_to_str(int16_t i)
+{
   sprintf(tmp_str, "%6d", i);
   return tmp_str;
 }
 
-
-void setup() {
-  // put your setup code here, to run once:
+void setup()
+{
   gprsSerial.begin(9600);
   Serial.begin(9600);
   gpsSerial.begin(9600);
@@ -37,16 +36,22 @@ void setup() {
   Wire.write(0x6B);
   Wire.write(0);
   Wire.endTransmission(true);
+
+  pinMode(trigger_pin, OUTPUT);
+  pinMode(echo_pin, INPUT);
 }
 
-void loop() {
-
-  // Read GPS data
+void loop()
+{
   unsigned long start = millis();
-  while (millis() - start < GPS_TIMEOUT) {
-    while (gpsSerial.available()) {
-      if (gps.encode(gpsSerial.read())) {
-        if (gps.location.isValid()) {
+  while (millis() - start < GPS_TIMEOUT)
+  {
+    while (gpsSerial.available())
+    {
+      if (gps.encode(gpsSerial.read()))
+      {
+        if (gps.location.isValid())
+        {
           Serial.print("Latitude: ");
           Serial.println(gps.location.lat(), 6);
           Serial.print("Longitude: ");
@@ -56,7 +61,6 @@ void loop() {
     }
   }
 
-  // put your main code here, to run repeatedly:
   Wire.beginTransmission(MPU_ADDR);
   Wire.write(0x3B);
   Wire.endTransmission(false);
@@ -89,29 +93,47 @@ void loop() {
 
   Serial.println();
 
-  // Check for upward movement
-  if (accelerometer_y > prev_accelerometer_y + 1000) {
+  if (accelerometer_y > prev_accelerometer_y + 1000)
+  {
     upward_movement_detected = true;
     prev_accelerometer_y = accelerometer_y;
   }
-  // Check for downward movement
-  else if (accelerometer_y < prev_accelerometer_y - 1000) {
+  else if (accelerometer_y < prev_accelerometer_y - 1000)
+  {
     downward_movement_detected = true;
     prev_accelerometer_y = accelerometer_y;
   }
 
-  // If upward or downward movement detected, display GPS data
-  if (upward_movement_detected || downward_movement_detected) {
-    if (gps.location.isValid()) {
+  if (upward_movement_detected || downward_movement_detected)
+  {
+    if (gps.location.isValid())
+    {
       gpsSerial.print("GPS Latitude: ");
       gpsSerial.println(gps.location.lat(), 6);
       gpsSerial.print("GPS Longitude: ");
       gpsSerial.println(gps.location.lng(), 6);
     }
-    // Reset movement detection flags
     upward_movement_detected = false;
     downward_movement_detected = false;
   }
+
+  long duration, inches, cm;
+
+  digitalWrite(trigger_pin, LOW);
+  delayMicroseconds(2);
+  digitalWrite(trigger_pin, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(trigger_pin, LOW);
+
+  duration = pulseIn(echo_pin, HIGH);
+
+  inches = microsecondsToInches(duration);
+  cm = microsecondsToCentimeters(duration);
+
+  Serial.print(inches);
+  Serial.print("in, ");
+  Serial.print(cm);
+  Serial.print("cm");
 
   delay(1000);
 
@@ -139,31 +161,45 @@ void loop() {
   gprsSerial.println("AT+CIPMUX=0");
   delay(2000);
 
-  gprsSerial.println("AT+CSTT=\"internet\"");  //setting APN
+  gprsSerial.println("AT+CSTT=\"internet\""); //setting APN
   delay(1000);
 
-  gprsSerial.println("AT+CIICR");  //wireless connection
+  gprsSerial.println("AT+CIICR"); //wireless connection
   delay(3000);
 
-  gprsSerial.println("AT+CIFSR");  //get local IP address
+  gprsSerial.println("AT+CIFSR"); //get local IP address
   delay(2000);
 
-  gprsSerial.println("AT+CIPSTART=\"TCP\", \"api.thingspeak.com\",\"80\"");  //start the connection
+  gprsSerial.println("AT+CIPSTART=\"TCP\", \"api.thingspeak.com\",\"80\""); //start the connection
   delay(6000);
 
-  gprsSerial.println("AT+CIPSEND");  //begin send data to remote server
+  gprsSerial.println("AT+CIPSEND"); //begin send data to remote server
   delay(4000);
 
-  String str = "GET https://api.thingspeak.com/update?api_key=P7NV9M1VIM6AW52I&field1=" + String(accelerometer_x) + "&field2=" + String(accelerometer_y) + "&field3=" + String(accelerometer_z) + "&field4=" + String(gps.location.lng(), 6) + "&field5=" + String(gps.location.lat(), 6);
+  // Formulate the data string
+  String str = "GET https://api.thingspeak.com/update?api_key=P7NV9M1VIM6AW52I&field1=" + String(accelerometer_x) +
+               "&field2=" + String(accelerometer_y) + "&field3=" + String(accelerometer_z) +
+               "&field4=" + String(gps.location.lng(), 6) + "&field5=" + String(gps.location.lat(), 6) +
+               "&field6=" + String(inches) + "&field7=" + String(cm);
   Serial.println(str);
   gprsSerial.println(str);
 
   delay(4000);
 
-  gprsSerial.println((char)26);  //sending
+  gprsSerial.println((char)26); //sending
   delay(5000);
   gprsSerial.println();
 
-  gprsSerial.println("AT+CIPSHUT");  //close the connection
+  gprsSerial.println("AT+CIPSHUT"); //close the connection
   delay(100);
+}
+
+long microsecondsToInches(long microseconds)
+{
+  return microseconds / 74 / 2;
+}
+
+long microsecondsToCentimeters(long microseconds)
+{
+  return microseconds / 29 / 2;
 }
