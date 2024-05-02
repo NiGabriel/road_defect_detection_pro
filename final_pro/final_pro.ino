@@ -13,9 +13,13 @@ const unsigned long GPS_TIMEOUT = 2000;
 TinyGPSPlus gps;
 
 int16_t accelerometer_x, accelerometer_y, accelerometer_z;
+float AccX_calib, AccY_calib, AccZ_calib;
+
 int16_t gyro_x, gyro_y, gyro_z;
+float rateRoll, ratePitch, rateYaw;
+
 int16_t temperature;
-int16_t prev_accelerometer_y = 0;
+float prev_accelerometer_y = 0.0;
 bool upward_movement_detected = false;
 bool downward_movement_detected = false;
 
@@ -52,10 +56,10 @@ void loop()
       {
         if (gps.location.isValid())
         {
-          Serial.print("Latitude: ");
-          Serial.println(gps.location.lat(), 6);
-          Serial.print("Longitude: ");
-          Serial.println(gps.location.lng(), 6);
+          // Serial.print("Latitude: ");
+          // Serial.println(gps.location.lat(), 6);
+          // Serial.print("Longitude: ");
+          // Serial.println(gps.location.lng(), 6);
         }
       }
     }
@@ -75,33 +79,41 @@ void loop()
   gyro_y = Wire.read() << 8 | Wire.read();
   gyro_z = Wire.read() << 8 | Wire.read();
 
-  Serial.print("aX = ");
-  Serial.print(convert_int16_to_str(accelerometer_x));
-  Serial.print(" | aY = ");
-  Serial.print(convert_int16_to_str(accelerometer_y));
-  Serial.print(" | aZ = ");
-  Serial.print(convert_int16_to_str(accelerometer_z));
+  AccX_calib = (float)accelerometer_x/4096-0.05;
+  AccY_calib = (float)accelerometer_y/4096+0.01;
+  AccZ_calib = (float)accelerometer_z/4096-0.11; 
 
-  Serial.print(" | tmp = ");
-  Serial.print(temperature / 340.00 + 36.53);
-  Serial.print(" | gX = ");
-  Serial.print(convert_int16_to_str(gyro_x));
-  Serial.print(" | gY = ");
-  Serial.print(convert_int16_to_str(gyro_y));
-  Serial.print(" | gZ = ");
-  Serial.print(convert_int16_to_str(gyro_z));
+  rateRoll = (float)gyro_x/65.5;
+  ratePitch = (float)gyro_y/65.5;
+  rateYaw = (float)gyro_z/65.5;
 
-  Serial.println();
+  // Serial.print("aX = ");
+  // Serial.print(convert_int16_to_str(accelerometer_x));
+  // Serial.print(" | aY = ");
+  // Serial.print(convert_int16_to_str(accelerometer_y));
+  // Serial.print(" | aZ = ");
+  // Serial.print(convert_int16_to_str(accelerometer_z));
 
-  if (accelerometer_y > prev_accelerometer_y + 1000)
+  // Serial.print(" | tmp = ");
+  // Serial.print(temperature / 340.00 + 36.53);
+  // Serial.print(" | gX = ");
+  // Serial.print(convert_int16_to_str(gyro_x));
+  // Serial.print(" | gY = ");
+  // Serial.print(convert_int16_to_str(gyro_y));
+  // Serial.print(" | gZ = ");
+  // Serial.print(convert_int16_to_str(gyro_z));
+
+  // Serial.println();
+
+  if (AccY_calib > prev_accelerometer_y + 0.5)
   {
     upward_movement_detected = true;
-    prev_accelerometer_y = accelerometer_y;
+    prev_accelerometer_y = AccY_calib;
   }
-  else if (accelerometer_y < prev_accelerometer_y - 1000)
+  else if (AccX_calib < prev_accelerometer_y - 0.5)
   {
     downward_movement_detected = true;
-    prev_accelerometer_y = accelerometer_y;
+    prev_accelerometer_y = AccY_calib;
   }
 
   if (upward_movement_detected || downward_movement_detected)
@@ -130,69 +142,122 @@ void loop()
   inches = microsecondsToInches(duration);
   cm = microsecondsToCentimeters(duration);
 
-  Serial.print(inches);
-  Serial.print("in, ");
-  Serial.print(cm);
-  Serial.print("cm");
+  // Serial.print(inches);
+  // Serial.print("in, ");
+  // Serial.print(cm);
+  // Serial.print("cm");
 
-  delay(1000);
+  // delay(1000);
 
   if (gprsSerial.available())
     Serial.write(gprsSerial.read());
 
   gprsSerial.println("AT");
-  delay(1000);
+  // delay(1000);
 
   gprsSerial.println("AT+CPIN?");
-  delay(1000);
+  // delay(1000);
 
   gprsSerial.println("AT+CREG?");
-  delay(1000);
+  // delay(1000);
 
   gprsSerial.println("AT+CGATT?");
-  delay(1000);
+  // delay(1000);
 
   gprsSerial.println("AT+CIPSHUT");
-  delay(1000);
+  // delay(1000);
 
   gprsSerial.println("AT+CIPSTATUS");
-  delay(2000);
+  // delay(2000);
 
   gprsSerial.println("AT+CIPMUX=0");
-  delay(2000);
+  // delay(2000);
 
   gprsSerial.println("AT+CSTT=\"internet\""); //setting APN
-  delay(1000);
+  // delay(1000);
 
   gprsSerial.println("AT+CIICR"); //wireless connection
-  delay(3000);
+  // delay(3000);
 
   gprsSerial.println("AT+CIFSR"); //get local IP address
-  delay(2000);
+  // delay(2000);
 
   gprsSerial.println("AT+CIPSTART=\"TCP\", \"api.thingspeak.com\",\"80\""); //start the connection
-  delay(6000);
+  // delay(6000);
 
   gprsSerial.println("AT+CIPSEND"); //begin send data to remote server
-  delay(4000);
+  // delay(4000);
+
+  // delay(2000); // Allow time for the GSM module to initialize
+
+  // if (sendSMS("+250782055492", composeSMS().c_str())) // Replace with your desired phone number and message
+  // {
+  //   Serial.println("\nSMS sent OK.");
+  // }
+  // else
+  // {
+  //   Serial.println("\nError sending SMS.");
+  // }
 
   // Formulate the data string
-  String str = "GET https://api.thingspeak.com/update?api_key=P7NV9M1VIM6AW52I&field1=" + String(accelerometer_x) +
-               "&field2=" + String(accelerometer_y) + "&field3=" + String(accelerometer_z) +
-               "&field4=" + String(gps.location.lng(), 6) + "&field5=" + String(gps.location.lat(), 6) +
-               "&field6=" + String(inches) + "&field7=" + String(cm);
+  String str = "GET https://api.thingspeak.com/update?api_key=P7NV9M1VIM6AW52I&field1=" + String(AccX_calib) +
+               "&field2=" + String(AccY_calib) + "&field3=" + String(AccZ_calib) + "&field4=" + String(rateRoll) +
+               "&field5=" + String(ratePitch) + "&field6=" + String(rateYaw) +
+               "&field7=" + String(gps.location.lng(), 6) + "&field8=" + String(gps.location.lat(), 6) +
+               "&field9=" + String(inches) + "&field10=" + String(cm);
   Serial.println(str);
   gprsSerial.println(str);
 
-  delay(4000);
+  // delay(4000);
 
   gprsSerial.println((char)26); //sending
-  delay(5000);
+  // delay(5000);
   gprsSerial.println();
 
   gprsSerial.println("AT+CIPSHUT"); //close the connection
-  delay(100);
+  // delay(100);
 }
+
+// String composeSMS()
+// {
+//   // Compose SMS with sensor data
+//   String smsMessage = "Sensor Data:\n";
+//   smsMessage += "Accelerometer X: " + String(accelerometer_x) + "\n";
+//   smsMessage += "Accelerometer Y: " + String(accelerometer_y) + "\n";
+//   smsMessage += "Accelerometer Z: " + String(accelerometer_z) + "\n";
+//   smsMessage += "Temperature: " + String(temperature / 340.00 + 36.53) + "\n";
+//   smsMessage += "Gyro X: " + String(gyro_x) + "\n";
+//   smsMessage += "Gyro Y: " + String(gyro_y) + "\n";
+//   smsMessage += "Gyro Z: " + String(gyro_z) + "\n";
+//   smsMessage += "GPS Latitude: " + String(gps.location.lat(), 6) + "\n";
+//   smsMessage += "GPS Longitude: " + String(gps.location.lng(), 6) + "\n";
+//   return smsMessage;
+// }
+
+// bool sendSMS(const char *phoneNumber, const char *message)
+// {
+//   gprsSerial.println("AT+CMGF=1"); // Set the GSM module to text mode
+//   delay(1000);
+
+//   gprsSerial.print("AT+CMGS=\"");
+//   gprsSerial.print(phoneNumber);
+//   gprsSerial.println("\"");
+
+//   delay(1000);
+//   gprsSerial.print(message);
+//   delay(100);
+//   gprsSerial.println((char)26); // End SMS transmission with Ctrl+Z
+//   delay(1000);
+
+//   if (gprsSerial.find("OK"))
+//   {
+//     return true;
+//   }
+//   else
+//   {
+//     return false;
+//   }
+// }
 
 long microsecondsToInches(long microseconds)
 {
